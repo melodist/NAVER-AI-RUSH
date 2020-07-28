@@ -11,12 +11,74 @@ from keras.applications.resnet_v2 import preprocess_input
 import pandas as pd
 from nsml.constants import DATASET_PATH
 
+from keras.utils import Sequence
+import imgaug.augmenters as iaa
+
 
 class EmptyContentError(Exception):
     pass
 
 
 UNLABELED = -1
+
+
+class CustomInputGenerator(Sequence):
+    """Wrapper of 2 ImageDataGenerator"""
+
+    def __init__(self, fn, dataset, validation_fraction, batch_size, subset):
+        # Keras generator
+        self.generator = ImageDataGenerator(
+            preprocessing_function=fn,
+            horizontal_flip=True,
+            zoom_range=0.2,
+            width_shift_range=0.1,
+            height_shift_range=0.1,
+            validation_split=validation_fraction
+        )
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.subset = subset
+
+        # Real time multiple input data augmentation
+        self.genX1 = self.generator.flow_from_directory(
+            directory=dataset.base_dir / 'train',
+            shuffle=True,
+            batch_size=self.batch_size,
+            target_size=dataset.img_size[:-1],
+            classes=dataset.classes,
+            subset=subset)
+
+        self.n = 0
+        self.max = self.__len__()
+
+    def __len__(self):
+        """It is mandatory to implement it on Keras Sequence"""
+        return self.genX1.__len__()
+
+    def __getitem__(self, index):
+        """Getting items from the 3 generators and packing them"""
+        X_batch, Y_batch = self.genX1.__getitem__(index)
+
+        mean = [0.55232704, 0.51815085, 0.48528248]
+        std = [0.21313286, 0.21373375, 0.21965458]
+
+        seq = iaa.Sequential([
+            iaa.Multiply((0.1, 1.5)),
+            iaa.contrast.LinearContrast((0.75, 1.5))
+        ])
+
+        X_batch = seq.augment_images(X_batch)
+        for i in range(len(X_batch)):
+            X_batch[i] = X_batch[i] / mean - std
+
+        return X_batch, Y_batch
+
+    def __next__(self):
+        if self.n >= self.max:
+            self.n = 0
+        result = self.__getitem__(self.n)
+        self.n += 1
+        return result
 
 
 class Dataset:
@@ -49,31 +111,10 @@ class Dataset:
             train_generator: Keras data generator.
             val_generator: Keras data generator.
         """
-        train_datagen = ImageDataGenerator(
-            preprocessing_function=preprocess_input,
-            horizontal_flip=True,
-            zoom_range=0.2,
-            width_shift_range=0.1,
-            height_shift_range=0.1,
-            validation_split=self.validation_fraction
-        )
-
-        train_generator = train_datagen.flow_from_directory(
-            directory=self.base_dir / 'train',
-            shuffle=True,
-            batch_size=batch_size,
-            target_size=self.img_size[:-1],
-            classes=self.classes,
-            subset='training')
-
-        val_generator = train_datagen.flow_from_directory(
-            directory=self.base_dir / 'train',
-            batch_size=batch_size,
-            target_size=self.img_size[:-1],
-            classes=self.classes,
-            shuffle=True,
-            subset='validation')
-        assert self.classes == list(iter(train_generator.class_indices))
+        train_generator = CustomInputGenerator(preprocess_input, self, self.validation_fraction, batch_size,
+                                               'training')
+        val_generator = CustomInputGenerator(preprocess_input, self, self.validation_fraction, batch_size,
+                                             'validation')
 
         return train_generator, val_generator
 
@@ -136,7 +177,7 @@ class Dataset:
                  |-img0
                  |-img1
                  ...
-             |-montone
+             |-monotone
                  ...
              |-screenshot
                  ...
