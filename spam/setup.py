@@ -1,4 +1,4 @@
-# nsml: registry.navercorp.com/abuse-filtering-public/ai-rush-baseline:latest
+# nsml: registry.navercorp.com/nsml/airush2020:tf2.0
 from distutils.core import setup
 
 setup(
@@ -17,5 +17,11 @@ setup(
                       'pillow==7.1.2',
                       'requests==2.24.0',
                       'tqdm==4.46.1',
-                      'wget==3.2']
+                      'wget==3.2',
+                      'scikit-image',
+                      'opencv-python-headless',
+                      'imageio',
+                      'Shapely',
+                      'imgaug'
+                      ]
 )
