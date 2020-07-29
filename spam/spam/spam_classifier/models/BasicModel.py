@@ -23,7 +23,7 @@ class BasicModel:
         self.network: keras.Model = network_fn(**kwargs_or_empty_dict(network_kwargs))
         self.debug = False
 
-    def fit(self, epochs_finetune, epochs_full, batch_size, debug=False):
+    def fit(self, epochs_finetune, epochs_full, batch_size, class_weight, debug=False):
         self.debug = debug
         self.data.prepare()
         self.network.compile(
@@ -46,6 +46,7 @@ class BasicModel:
                                        val_gen=val_gen,
                                        classes=self.data.classes),
                                    validation_data=val_gen,
+                                   class_weight=class_weight,
                                    use_multiprocessing=True,
                                    workers=20)  # TODO change to be dependent on n_cpus
 
@@ -69,6 +70,7 @@ class BasicModel:
                                        patience=10,
                                        classes=self.data.classes),
                                    validation_data=val_gen,
+                                   class_weight=class_weight,
                                    use_multiprocessing=True,
                                    workers=20)
 
