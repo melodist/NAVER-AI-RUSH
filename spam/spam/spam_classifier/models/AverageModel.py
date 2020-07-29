@@ -3,6 +3,7 @@ from typing import Callable, List
 import keras
 from keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
 from keras.optimizers import SGD, Adam
+from keras.utils import multi_gpu_model
 import nsml
 import numpy as np
 import pandas as pd
@@ -20,13 +21,14 @@ class AverageModel:
 
     def __init__(self, network_fn: Callable, dataset_cls: Dataset, dataset_kwargs, network_kwargs):
         self.data: Dataset = dataset_cls(**kwargs_or_empty_dict(dataset_kwargs))
-        self.networks: list = [network_fn(**kwargs_or_empty_dict(network_kwargs)) for _ in range(2)]
+        self.networks: list = [network_fn(**kwargs_or_empty_dict(network_kwargs)) for _ in range(3)]
         self.debug = False
 
     def fit(self, epochs_finetune, epochs_full, batch_size, class_weight, debug=False):
         self.debug = debug
         self.data.prepare()
-        for i in range(2):
+        for i in range(3):
+            self.networks[i] = multi_gpu_model(self.networks[i], gpus=2)
             self.networks[i].compile(
                 loss=self.loss(),
                 optimizer=self.optimizer('finetune'),
@@ -44,7 +46,7 @@ class AverageModel:
                                            epochs=epochs_finetune,
                                            callbacks=self.callbacks(
                                                model_path=model_path_finetune,
-                                               model_prefix='last_layer_tuning',
+                                               model_prefix=f'last_layer_tuning_{i}',
                                                patience=5,
                                                val_gen=val_gen,
                                                classes=self.data.classes),
@@ -52,7 +54,7 @@ class AverageModel:
                                            validation_steps=val_steps,
                                            use_multiprocessing=True,
                                            class_weight=class_weight,
-                                           workers=20)  # TODO change to be dependent on n_cpus
+                                           workers=10)  # TODO change to be dependent on n_cpus
 
             self.networks[i].load_weights(model_path_finetune)
             self.unfreeze()
@@ -69,7 +71,7 @@ class AverageModel:
                                            epochs=epochs_full,
                                            callbacks=self.callbacks(
                                                model_path=model_path_full,
-                                               model_prefix='full_tuning',
+                                               model_prefix=f'full_tuning_{i}',
                                                val_gen=val_gen,
                                                patience=10,
                                                classes=self.data.classes),
@@ -77,7 +79,7 @@ class AverageModel:
                                            validation_steps=val_steps,
                                            use_multiprocessing=True,
                                            class_weight=class_weight,
-                                           workers=20)
+                                           workers=10)
 
             self.networks[i].load_weights(model_path_full)
         nsml.save(checkpoint='best')
